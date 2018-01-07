@@ -1,6 +1,10 @@
 CHANGES
 =======
 
+1.1
+---
+
+* speed up scanning of "Auto Update"
 * improvements to picasa-drive matching
 * fix tests
 * added locking, only one instance can run against a given database location

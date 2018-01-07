@@ -79,6 +79,10 @@ class GooglePhotosSyncMain:
         action='store_true',
         help="skip picasa scan, albums will not be scanned")
     parser.add_argument(
+        "--skip-auto-backup",
+        action='store_true',
+        help="skip picasa auto back-up album (Auto Backup & ...)")
+    parser.add_argument(
         "--skip-drive",
         action='store_true',
         help="skip drive scan, (assume that the db is up to date "
@@ -148,6 +152,7 @@ class GooglePhotosSyncMain:
         self.drive_sync.driveFileName = args.drive_file
         self.drive_sync.allDrive = args.all_drive
         self.picasa_sync.album_name = args.album
+        self.picasa_sync.skipAutoBackup = args.skip_auto_backup
 
     @classmethod
     def logging(cls, args):

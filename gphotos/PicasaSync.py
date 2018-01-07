@@ -257,12 +257,12 @@ class IndexAlbumHelper:
 
     def __init__(self, picasa_sync):
         # Initialize members global to the whole scan
-        self.p = picasa_sync
+        self.picasa_sync = picasa_sync
         self.total_photos = 0
         self.new_picasa_photos = 0
         self.drive_photos = 0
         self.multiple_match_count = 0
-        (_, self.latest_download) = self.p._db.get_scan_dates()
+        (_, self.latest_download) = self.picasa_sync._db.get_scan_dates()
         if not self.latest_download:
             self.latest_download = Utils.minimum_date()
 
@@ -281,7 +281,7 @@ class IndexAlbumHelper:
         self.album = album
         self.album_end_photo = Utils.minimum_date()
         self.album_start_photo = album.modify_date
-        self.sync_date = self.p._db.get_album(self.album.id).SyncDate
+        self.sync_date = self.picasa_sync._db.get_album(self.album.id).SyncDate
         if self.sync_date:
             self.sync_date = self.sync_date
         else:
@@ -291,18 +291,18 @@ class IndexAlbumHelper:
         self.total_photos += int(album.size)
 
     def skip_this_album(self):
-        if (self.p.album_name and self.p.album_name !=
-            self.album.filename) or self.album.filename in \
-                PicasaSync.HIDDEN_ALBUMS:
+        if (self.picasa_sync.album_name and self.picasa_sync.album_name != self.album.filename) or \
+        self.album.filename in PicasaSync.HIDDEN_ALBUMS or \
+        self.album.filename in PicasaSync.ALL_FILES_ALBUMS:
             return True
-        if self.p.endDate:
-            if Utils.string_to_date(self.p.endDate) < self.album.modify_date:
+        if self.picasa_sync.endDate:
+            if Utils.string_to_date(self.picasa_sync.endDate) < self.album.modify_date:
                 return True
-        if self.p.startDate:
-            if Utils.string_to_date(self.p.startDate) > self.album.modify_date:
+        if self.picasa_sync.startDate:
+            if Utils.string_to_date(self.picasa_sync.startDate) > self.album.modify_date:
                 return True
         # handle incremental backup but allow startDate to override
-        if not self.p.startDate:
+        if not self.picasa_sync.startDate:
             if self.album.modify_date < self.sync_date:
                 return True
         if int(self.album.size) == 0:
@@ -319,20 +319,20 @@ class IndexAlbumHelper:
     def index_photos(self, photos):
         completed = False
         for photo in photos.entry:
-            picasa_media = PicasaMedia(None, self.p._root_folder, photo)
+            picasa_media = PicasaMedia(None, self.picasa_sync._root_folder, photo)
 
             if picasa_media.create_date < self.latest_download and \
                     self.album.filename in PicasaSync.HIDDEN_ALBUMS:
                 completed = True
                 break
 
-            if (not self.p.includeVideo) and \
+            if (not self.picasa_sync.includeVideo) and \
                     picasa_media.mime_type.startswith('video/'):
                 continue
 
             self.set_album_dates(picasa_media.create_date)
             log.debug(u'checking %s is indexed', picasa_media.local_full_path)
-            picasa_row = picasa_media.is_indexed(self.p._db)
+            picasa_row = picasa_media.is_indexed(self.picasa_sync._db)
             if picasa_row:
                 # modify dates seem quite random in picasa listings and since
                 # they cannot reliably compare with drive dates I currently do
@@ -344,13 +344,13 @@ class IndexAlbumHelper:
                 self.new_picasa_photos += 1
                 log.info(u"New index for %d %s", self.new_picasa_photos,
                          picasa_media.local_full_path)
-                picasa_row_id = picasa_media.save_to_db(self.p._db)
+                picasa_row_id = picasa_media.save_to_db(self.picasa_sync._db)
                 if self.new_picasa_photos % 1000 == 0:
-                    self.p._db.store()
+                    self.picasa_sync._db.store()
 
             log.debug(u'searching for drive match on {}'.format(
                 picasa_media.filename))
-            drive_rows = self.p.match_drive_photo(picasa_media)
+            drive_rows = self.picasa_sync.match_drive_photo(picasa_media)
             count, row = (len(drive_rows), drive_rows[0]) if drive_rows \
                 else (0, None)
 
@@ -365,14 +365,14 @@ class IndexAlbumHelper:
             if count == 0:
                 # no match, link to the picasa file
                 log.info(u'unmatched %s', picasa_media.local_full_path)
-                self.p._db.put_album_file(self.album.id, picasa_row_id)
+                self.picasa_sync._db.put_album_file(self.album.id, picasa_row_id)
             else:
                 # store link between album and drive file
                 log.debug(u'matched %s', picasa_media.local_full_path)
-                self.p._db.put_album_file(self.album.id, drive_rows[0].Id)
+                self.picasa_sync._db.put_album_file(self.album.id, drive_rows[0].Id)
                 # store the link between picasa and related drive file
                 # this also flags it as not requiring download
-                self.p._db.put_symlink(picasa_row_id, drive_rows[0].Id)
+                self.picasa_sync._db.put_symlink(picasa_row_id, drive_rows[0].Id)
 
                 if count > 1:
                     self.multiple_match_count += 1
@@ -391,7 +391,7 @@ class IndexAlbumHelper:
                                        SyncDate=Utils.date_to_string(
                                            datetime.now()))
         log.debug(u'completed album %s', self.album.filename)
-        self.p._db.put_album(row)
+        self.picasa_sync._db.put_album(row)
         if self.album.modify_date > self.latest_download:
             self.latest_download = self.album.modify_date
 
@@ -399,5 +399,5 @@ class IndexAlbumHelper:
         # save the latest and earliest update times. We only do this if a
         # complete scan of all existing albums has completed because the order
         # of albums is a little randomized (possibly by photo content?)
-        if not (self.p.album_name or self.p.startDate or self.p.endDate):
-            self.p._db.set_scan_dates(picasa_last_date=self.latest_download)
+        if not (self.picasa_sync.album_name or self.picasa_sync.startDate or self.picasa_sync.endDate):
+            self.picasa_sync._db.set_scan_dates(picasa_last_date=self.latest_download)
